@@ -1,9 +1,13 @@
-#boilerplate and auth
+#author: JP King
+#Date April-May 2022
+#spotipy: https://spotipy.readthedocs.io/en/2.19.0/
+#spotify WEP API: https://developer.spotify.com/documentation/web-api/
+
 from functools import reduce #calculating runtime
 import spotipy #spotify API
 import re #pattern matching in names
 from spotipy.oauth2 import SpotifyOAuth #authorization
-
+#authorization process
 scope = "playlist-read-private"
 sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scope))
 
@@ -22,7 +26,7 @@ def getMonthlyPlaylists() -> dict:
     results = sp.current_user_playlists()['items']
     monthlyPlaylists = []
     #create new dict, which we will populate with
-    #only essential keys
+    #only the playlist name, and the unique identifier
     keys = ['name','uri']
     for item in results:
         if checkIfMonthlyPlaylist(item):
@@ -31,7 +35,7 @@ def getMonthlyPlaylists() -> dict:
                 if key in keys:
                     filteredItem[key] = item[key]
             monthlyPlaylists.append(filteredItem)
-        #sort results by name
+    #sort results by year, month
     monthlyPlaylists= sorted(monthlyPlaylists, key= lambda x: (x['name'][3:], x['name'][:2]) )
     return monthlyPlaylists
 
@@ -45,29 +49,30 @@ def getArtists(artists_data : list ):
         artistString += artist['name']
     return artistString
 
-def getMinutesSeconds(miliseconds : int) -> str:
-    seconds = round(miliseconds / 1000 )#convert to seconds
+#take in a number of milliseconds, and return 
+#a string in the format HH:MM:SS, or if less than
+#1 hour, just MM:SS
+def getMinutesSeconds(milliseconds : int) -> str:
+    seconds = round(milliseconds / 1000 )#convert to discrete seconds
     minutes = seconds // 60 #figure out how many minutes there are
     hours = minutes // 60 #figure out how many hours based on minutes
     minutes = minutes % 60 #subtract minutes counted towards hour
     seconds = seconds % 60 #subtract seconds counted towards minute
-    #format time to be in format mm:ss
+    #format time 
     if hours > 0:
         return "%02d:%02d:%02d" % (hours,minutes, seconds) 
     else:
         return "%02d:%02d" % (minutes, seconds) 
 
-#this function calculates the time length of a playlist in minutes/seconds
-#and returns this as a str value
-#note it does not append this field
-def calculateRunTime(tracklist : list) -> str:
-    runtimes = list(map(lambda x: x['track']['duration_ms'],tracklist))
-    miliseconds = reduce(lambda x,y: x + y,runtimes)
-    return miliseconds
+#this function calculates the time length of a playlist in milliseconds
+def calculateRunTime(playlist: list) -> int:
+    runtimes = list(map(lambda x: x['track']['duration_ms'],playlist))
+    milliseconds = reduce(lambda x,y: x + y,runtimes)
+    return milliseconds
 
 #this function takes a playlist object and returns the list
-#of tracks with their metadeta. Note it does not append to the list
-def getTracks(playlist: dict) -> tuple: #<int,list>
+#of tracks with their metadeta. as well as the total tracks and runtime
+def getTracks(playlist: dict) -> tuple: #<int, int, list>
     tracklist = []
     #call to spotify api to get tracks
     tracks = sp.user_playlist_tracks(playlist_id=playlist['uri'])
@@ -86,7 +91,7 @@ def getTracks(playlist: dict) -> tuple: #<int,list>
         filteredTrack['artists'] = getArtists(trackdata['artists'])
         #append album data
         filteredTrack['album'] = trackdata['album']['name']
-        #only keep year
+        #only keep year, if longer date format is given, year is always first 4 chars
         filteredTrack['year'] = trackdata['album']['release_date'][:4]
         filteredTrack['length'] = getMinutesSeconds(trackdata['duration_ms'])
         filteredTrack['playlist'] = playlist['name']
@@ -94,7 +99,8 @@ def getTracks(playlist: dict) -> tuple: #<int,list>
     #add them to the dictionary
     return (total,runtime, tracklist)
 
-def getHeader(firstTrack : dict):
+#return comma separated column names
+def getHeader(firstTrack : dict) -> str:
     header = ''
     for key in firstTrack:
         if len(header) != 0:
@@ -103,6 +109,7 @@ def getHeader(firstTrack : dict):
     header += '\n' 
     return header
 
+#write the tracklist in a csv, which contains information about each track
 def writeToTrackCSV(playlists: list):
     with open("MonthlyPlaylistsTracks.csv", 'w') as output:
         output.write(getHeader(playlists[0]['tracks'][0]))
@@ -121,6 +128,7 @@ def writeToTrackCSV(playlists: list):
                 output.write(line)
                 output.write('\n')
 
+#write the playlist CSV, which contains information about each playlist
 def writeToPlaylistCSV(playlists : list):
     with open("MonthlyPlaylists.csv",'w') as output:
         output.write('name,total,runtime\n')
